@@ -1,0 +1,28 @@
+{
+  "name": "scent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Pheromone trails for the agent web: which door into a site is open, and what other agents just found there.",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "check": "npm run typecheck && npm run test",
+    "db:local": "wrangler d1 migrations apply scent --local",
+    "db:remote": "wrangler d1 migrations apply scent --remote",
+    "selftest": "tsx scripts/selftest.ts",
+    "scout": "tsx scripts/scout.ts",
+    "brainbase": "tsx scripts/brainbase-agent.ts"
+  },
+  "dependencies": { "hono": "^4.13.10" },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260702.1",
+    "@types/node": "^26.6.3",
+    "tsx": "^4.23.15",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.11",
+    "wrangler": "^4.86.0"
+  }
+}

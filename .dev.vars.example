@@ -1,0 +1,7 @@
+TOKEN_SECRET=
+ADMIN_SECRET=
+# optional: finds a docs page for sites with no OpenAPI/llms.txt
+EXA_API_KEY=
+# optional: only for npm run brainbase
+BRAINBASE_API_KEY=
+# Local dev: PUBLIC_BASE_URL=http://localhost:8787

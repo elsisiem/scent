@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Scent: trail map</title>
+<meta name="robots" content="noindex">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Fraunces:ital,opsz,wght,SOFT,WONK@0,9..144,500..700,0..100,0..1;1,9..144,500..700,0..100,0..1&family=JetBrains+Mono:wght@500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/style.css">
+</head>
+<body>
+<div class="wrap">
+  <nav>
+    <a class="logo" href="/"><svg viewBox="0 0 64 64" aria-hidden="true"><g stroke="#2a1c12" stroke-width="3" stroke-linecap="round" fill="none"><path d="M24 20 Q22 8 32 5"/><path d="M40 20 Q42 8 52 8"/></g><circle cx="32" cy="5" r="3" fill="#f0a93b"/><circle cx="52" cy="8" r="3" fill="#f0a93b"/><circle cx="34" cy="36" r="19" fill="#d4623f" stroke="#2a1c12" stroke-width="3"/><circle cx="40" cy="32" r="6.5" fill="#fff" stroke="#2a1c12" stroke-width="2.5"/><circle cx="42" cy="32" r="3" fill="#2a1c12"/><path d="M33 44 Q39 49 45 44" stroke="#2a1c12" stroke-width="2.5" fill="none" stroke-linecap="round"/></svg>scent</a>
+    <span class="sp"></span>
+    <a class="l" href="/#try">Sniff another site</a>
+    <a class="l opt" href="/#integrate">Add to your agent</a>
+  </nav>
+  <div class="sniff" style="margin-top:14px"><div id="result" aria-live="polite"></div></div>
+  <p class="small muted" style="margin-top:22px">This is the same card an agent gets from <span class="mono" id="api-line"></span>.</p>
+</div>
+<script src="/app.js"></script>
+<script src="/d.js"></script>
+</body>
+</html>
