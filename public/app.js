@@ -131,7 +131,7 @@
         door("agent card", !!d.agent_card, link(d.agent_card)),
         door("API catalog", !!d.api_catalog)));
     const walls = [];
-    walls.push(`Plain GET from our probe: HTTP ${p.home.status ?? "no answer"}${p.home.bot_wall ? ", " + p.home.bot_wall.replace(/_/g, " ") : ", no bot wall"}${p.home.js_shell ? ", JS-only page" : ""}.`);
+    walls.push(`Plain GET from our probe: HTTP ${p.home.status ?? "no answer"}${p.home.bot_wall && !p.home.bot_wall.startsWith("http_") ? ", " + p.home.bot_wall.replace(/_/g, " ") : p.home.bot_wall ? ", refused" : ", no bot wall"}${p.home.js_shell ? ", JS-only page" : ""}.`);
     if (p.robots.found) walls.push(p.robots.blocks_all ? "robots.txt disallows all crawlers." : p.robots.ai_blocked.length ? `robots.txt blocks AI crawlers: ${p.robots.ai_blocked.slice(0, 4).join(", ")}.` : "robots.txt does not block AI crawlers.");
     else walls.push("No robots.txt found.");
     const probeBox = h("div", { class: "box" }, h("h4", {}, "What the probe saw"), h("ul", { class: "plain ok" }, walls.map((w) => h("li", {}, w))),

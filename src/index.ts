@@ -4,7 +4,7 @@ import { normalizeDomain } from "./lib/domain";
 import { handleMcp } from "./lib/mcp";
 import { openapi } from "./lib/openapi";
 import { renderText } from "./lib/recommend";
-import { feed, lookup, prune, report, stats } from "./lib/service";
+import { feed, lookup, prune, report, stats, warm } from "./lib/service";
 import { HOUR, ipKey, overLimit } from "./lib/util";
 
 type C = Context<{ Bindings: Env }>;
@@ -66,10 +66,12 @@ app.get("/healthz", (c) => c.json({ ok: true }));
 
 // ---------- agent API ----------
 
+const isScout = (c: C) => !!c.env.ADMIN_SECRET && c.req.header("x-scout-secret") === c.env.ADMIN_SECRET;
+
 async function doLookup(c: C, domain: string) {
   const ip = clientIp(c);
-  if (await overLimit(c.env, `look:${await ipKey(ip, c.env.TOKEN_SECRET)}`, 600, HOUR)) return err(c, 429, "rate_limited", "Too many lookups (600/hour in beta).");
-  const r = await lookup(c.env, domain, ip, { fresh: c.req.query("fresh") === "1" || c.req.query("fresh") === "true" });
+  if (!isScout(c) && await overLimit(c.env, `look:${await ipKey(ip, c.env.TOKEN_SECRET)}`, 600, HOUR)) return err(c, 429, "rate_limited", "Too many lookups (600/hour in beta).");
+  const r = await lookup(c.env, domain, ip, { fresh: c.req.query("fresh") === "1" || c.req.query("fresh") === "true", scout: isScout(c) });
   if (!r.ok) return err(c, r.status, r.error, r.message);
   const wantsText = c.req.query("format") === "text" || (!c.req.query("format") && /text\/plain/.test(c.req.header("accept") ?? "") && !/json/.test(c.req.header("accept") ?? ""));
   if (wantsText) return c.body(renderText(r.card), 200, { "content-type": "text/plain; charset=utf-8", "cache-control": "no-store" });
@@ -81,9 +83,7 @@ app.get("/v1/scent", (c) => doLookup(c, c.req.query("domain") ?? ""));
 app.post("/v1/trails", async (c) => {
   const b = await readJson(c);
   if (!b.ok) return b.res;
-  const secret = c.env.ADMIN_SECRET;
-  const scout = !!secret && c.req.header("x-scout-secret") === secret;
-  const r = await report(c.env, b.body, clientIp(c), scout);
+  const r = await report(c.env, b.body, clientIp(c), isScout(c));
   return r.ok ? c.json(r.ack) : err(c, r.status, r.error, r.message);
 });
 
@@ -126,6 +126,6 @@ app.onError((e, c) => {
 export default {
   fetch: app.fetch,
   async scheduled(_e: ScheduledController, env: Env, ctx: ExecutionContext) {
-    ctx.waitUntil(prune(env));
+    ctx.waitUntil(prune(env).then(() => warm(env)));
   },
 } satisfies ExportedHandler<Env>;

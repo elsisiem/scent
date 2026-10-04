@@ -155,6 +155,19 @@ describe("recommendation", () => {
     expect(c.recommended.route).toBe("browser");
     expect(c.avoid.join(" ")).toMatch(/cloudflare challenge/);
   });
+  it("does not write off plain HTTP when the probe was merely refused by status", () => {
+    const refused = probe({ home: { ...probe().home, status: 419, bot_wall: "http_419" } });
+    const c = buildCard(refused, computeTrail([], T), ctx);
+    expect(c.recommended.route).toBe("http");
+    expect(c.recommended.how).toMatch(/may not apply to your network/);
+    expect(c.avoid.join(" ")).toMatch(/datacenter IP/);
+  });
+  it("lets a route proven by agents outrank the browser fallback", () => {
+    const walled = probe({ home: { ...probe().home, bot_wall: "cloudflare_challenge" } });
+    expect(buildCard(walled, computeTrail([], T), ctx).recommended.route).toBe("browser");
+    const rows = [row({ route: "feed", outcome: "success", reporter: "a", created_at: T }), row({ route: "feed", outcome: "success", reporter: "b", created_at: T })];
+    expect(buildCard(walled, computeTrail(rows, T), ctx).recommended.route).toBe("feed");
+  });
   it("demotes a door that agents keep failing on, even though the probe says it exists", () => {
     const p = probe({ doors: { openapi: { url: "https://acme.example.org/openapi.json" } } });
     const rows = Array.from({ length: 4 }, (_, i) => row({ route: "api", outcome: "login_wall", reporter: "r" + i, created_at: T }));

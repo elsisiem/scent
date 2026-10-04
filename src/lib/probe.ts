@@ -200,6 +200,9 @@ export function detectWall(status: number, headers: Headers, body: string): stri
   if (status === 429) return "rate_limited";
   if (status === 401) return "login_wall";
   if (status === 403 || status === 999) return "blocked";
+  // Any other refusal (HN answers datacenter IPs with 419, for example). Kept as "http_<status>" so the card can say
+  // "refused by status only": that says more about Scent's IP than about yours.
+  if (status >= 400 && status !== 404 && status !== 410) return `http_${status}`;
   return null;
 }
 

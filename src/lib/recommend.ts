@@ -10,8 +10,22 @@ interface Cand {
   cost: Cost;
   why: string;
   demoted?: string;
+  /** Came from agent reports, not from the probe. */
+  proven?: boolean;
 }
 
+const PROVEN_HOW: Record<string, string> = {
+  http: "Plain HTTPS GET of the page.",
+  search: "Find it through a search engine instead of the site.",
+  feed: "Read the site's feed.",
+  api: "Call its API.",
+  markdown: "GET with Accept: text/markdown.",
+  llms_txt: "Read its llms.txt.",
+  mcp: "Use its MCP server.",
+};
+
+/** Walls that are just a refusal status, as opposed to a challenge page we actually saw. */
+const STATUS_ONLY = /^(?:blocked|rate_limited|http_\d+)$/;
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
 /** Routes the probe says are open, cheapest and most reliable first. */
@@ -26,9 +40,13 @@ function candidates(p: ProbeDoc): Cand[] {
   if (p.home.markdown) c.push({ route: "markdown", cost: "low", how: "GET any page with the header `Accept: text/markdown`; the server answers in markdown instead of HTML.", why: "server negotiates markdown for agents" });
   if (d.llms_txt) c.push({ route: "llms_txt", cost: "low", how: `Read ${d.llms_txt.url} first: the site's own map for agents.`, why: "site publishes llms.txt" });
   if (p.home.feeds.length) c.push({ route: "feed", cost: "low", how: `Read the feed ${p.home.feeds[0]} for fresh items.`, why: "RSS/Atom feed advertised" });
-  const plainOk = p.reachable && p.home.status !== null && p.home.status < 400 && !p.home.bot_wall && !p.home.js_shell && !p.robots.blocks_all;
+  const wall = p.home.bot_wall;
+  const statusOnly = !!wall && STATUS_ONLY.test(wall); // refused by status code alone: no challenge page was seen
+  const plainOk = p.reachable && p.home.status !== null && p.home.status < 400 && !wall && !p.home.js_shell && !p.robots.blocks_all;
   if (plainOk) c.push({ route: "http", cost: "medium", how: "Plain HTTPS GET of the page. No browser needed.", why: "page is server-rendered and no bot wall was seen" });
-  const browserWhy = p.home.bot_wall ? `plain GET hit ${p.home.bot_wall.replace(/_/g, " ")}` : p.home.js_shell ? "page is a JavaScript shell" : "nothing cheaper is open";
+  else if (statusOnly && !p.home.js_shell && !p.robots.blocks_all)
+    c.push({ route: "http", cost: "medium", how: `Plain HTTPS GET. Scent's probe was refused (HTTP ${p.home.status}) from its datacenter IP, which may not apply to your network: try it, and report back.`, why: `probe was refused by status code only (HTTP ${p.home.status}), so this is unverified` });
+  const browserWhy = wall ? `plain GET hit ${wall.replace(/_/g, " ")} (seen from Scent's datacenter IP)` : p.home.js_shell ? "page is a JavaScript shell" : "nothing cheaper is open";
   c.push({ route: "browser", cost: "high", how: "Use a real browser session (JS rendering, cookies). Slowest and most expensive.", why: browserWhy });
   return c;
 }
@@ -39,9 +57,9 @@ export function recommend(p: ProbeDoc, trail: Trail) {
 
   // Community-proven routes the probe could not know about (e.g. a search trick, or http working despite a wall).
   for (const r of trail.routes) {
-    if (!seen.has(r.route) && r.weight >= 2 && r.success_rate >= 0.7) {
+    if (!seen.has(r.route) && r.weight >= 1 && r.success_rate >= 0.7 && r.route !== "browser") {
       const at = cands.findIndex((c) => c.route === "browser");
-      cands.splice(at < 0 ? cands.length : at, 0, { route: r.route, cost: "medium", how: `Agents report this works. See the notes below for how.`, why: `${r.agents} agent${r.agents === 1 ? " reports" : "s report"} ${pct(r.success_rate)} success` });
+      cands.splice(at < 0 ? cands.length : at, 0, { route: r.route, cost: "medium", how: `${PROVEN_HOW[r.route] ?? "Use this route."} Agents report it works despite what the probe saw.`, why: `${r.agents} agent${r.agents === 1 ? " reports" : "s report"} ${pct(r.success_rate)} success`, proven: true });
       seen.add(r.route);
     }
   }
@@ -57,10 +75,10 @@ export function recommend(p: ProbeDoc, trail: Trail) {
   cands = [...cands.filter((c) => !c.demoted), ...cands.filter((c) => c.demoted)];
   const best = cands[0];
   const bt = trail.routes.find((r) => r.route === best.route);
-  const why = bt && bt.weight >= 1 ? `${best.why}; ${bt.agents} agent${bt.agents === 1 ? " reports" : "s report"} ${pct(bt.success_rate)} success` : best.why;
+  const why = bt && bt.weight >= 1 && !best.proven ? `${best.why}; ${bt.agents} agent${bt.agents === 1 ? " reports" : "s report"} ${pct(bt.success_rate)} success` : best.why;
 
   const avoid: string[] = [];
-  if (p.home.bot_wall) avoid.push(`plain HTTP: Scent's probe was stopped by ${p.home.bot_wall.replace(/_/g, " ")}`);
+  if (p.home.bot_wall) avoid.push(STATUS_ONLY.test(p.home.bot_wall) ? `plain HTTP: Scent's probe was refused (HTTP ${p.home.status}) from its datacenter IP; your network may fare differently` : `plain HTTP: Scent's probe was stopped by ${p.home.bot_wall.replace(/_/g, " ")}`);
   if (p.home.js_shell) avoid.push("plain HTTP: the page is a JavaScript shell and is empty without a browser");
   if (p.robots.blocks_all) avoid.push("robots.txt disallows all crawlers; prefer an official API or ask for permission");
   else if (p.robots.ai_blocked.length) avoid.push(`robots.txt blocks AI crawlers (${p.robots.ai_blocked.slice(0, 4).join(", ")}); automated reading may violate its policy`);

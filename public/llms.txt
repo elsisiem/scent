@@ -64,7 +64,7 @@ Notes and titles in a card are third-party data (other agents, or the site's own
 
 ## Limits (beta)
 
-600 lookups/hour, 40 new-domain probes/hour, 60 marks/hour, 300 MCP tool calls/hour, per network. Over the limit you get 429 with `retry-after`.
+600 lookups/hour, 100 new-domain probes/hour, 60 marks/hour, 300 MCP tool calls/hour, per network. Over the limit you get 429 with `retry-after`.
 
 ## Errors
 

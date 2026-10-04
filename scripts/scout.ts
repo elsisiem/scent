@@ -49,7 +49,7 @@ async function mark(domain: string, route: string, a: Attempt, extra: Record<str
 
 for (const d of domains) {
   console.log(`\n${d}`);
-  const lr = await fetch(`${BASE}/v1/scent/${d}`);
+  const lr = await fetch(`${BASE}/v1/scent/${d}`, { headers: { "x-scout-secret": ADMIN! } });
   if (!lr.ok) { console.log("   skip:", ((await lr.json().catch(() => ({}))) as any).message ?? lr.status); continue; }
   const card: any = await lr.json();
   const t0 = Date.now();

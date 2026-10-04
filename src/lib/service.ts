@@ -10,7 +10,7 @@ export type Fail = { ok: false; status: number; error: string; message: string }
 const fail = (status: number, error: string, message: string): Fail => ({ ok: false, status, error, message });
 
 const TRAIL_WINDOW_MS = 60 * DAY;
-const PROBES_PER_HOUR = 40;
+const PROBES_PER_HOUR = 100;
 const REPORTS_PER_HOUR = 60;
 const REPORTS_PER_DOMAIN_PER_DAY = 6;
 
@@ -30,18 +30,22 @@ async function exaDocs(env: Env, domain: string): Promise<Door | undefined> {
 }
 
 /** Cached probe, or a fresh one when stale / forced. Probing is rate limited per caller; stale data beats an error. */
-async function getProbe(env: Env, domain: string, ih: string, fresh: boolean): Promise<{ ok: true; probe: ProbeDoc; cached: boolean } | Fail> {
+async function saveProbe(env: Env, probe: ProbeDoc) {
+  await env.DB.prepare("INSERT INTO probes (domain, checked_at, reachable, doc) VALUES (?1,?2,?3,?4) ON CONFLICT(domain) DO UPDATE SET checked_at=?2, reachable=?3, doc=?4")
+    .bind(probe.domain, probe.checked_at, probe.reachable ? 1 : 0, JSON.stringify(probe)).run();
+}
+
+async function getProbe(env: Env, domain: string, ih: string, fresh: boolean, scout = false): Promise<{ ok: true; probe: ProbeDoc; cached: boolean } | Fail> {
   const row = await env.DB.prepare("SELECT doc, checked_at FROM probes WHERE domain = ?1").bind(domain).first<{ doc: string; checked_at: number }>();
   const t = now();
   const stale = row ? (JSON.parse(row.doc) as ProbeDoc) : null;
   if (stale && t - row!.checked_at < PROBE_TTL_MS && !(fresh && t - row!.checked_at > 5 * 60_000)) return { ok: true, probe: stale, cached: true };
-  if (await overLimit(env, `probe:${ih}`, PROBES_PER_HOUR, HOUR)) {
+  if (!scout && (await overLimit(env, `probe:${ih}`, PROBES_PER_HOUR, HOUR))) {
     if (stale) return { ok: true, probe: stale, cached: true };
     return fail(429, "rate_limited", `Too many new-domain probes from your network (${PROBES_PER_HOUR}/hour). Retry later.`);
   }
   const probe = await probeDomain(domain, fetch, { findDocs: (d) => exaDocs(env, d) });
-  await env.DB.prepare("INSERT INTO probes (domain, checked_at, reachable, doc) VALUES (?1,?2,?3,?4) ON CONFLICT(domain) DO UPDATE SET checked_at=?2, reachable=?3, doc=?4")
-    .bind(domain, probe.checked_at, probe.reachable ? 1 : 0, JSON.stringify(probe)).run();
+  await saveProbe(env, probe);
   return { ok: true, probe, cached: false };
 }
 
@@ -52,10 +56,10 @@ async function trailRows(env: Env, domain: string): Promise<TrailRow[]> {
   return results;
 }
 
-export async function lookup(env: Env, input: unknown, ip: string, opts: { fresh?: boolean } = {}): Promise<{ ok: true; card: Card } | Fail> {
+export async function lookup(env: Env, input: unknown, ip: string, opts: { fresh?: boolean; scout?: boolean } = {}): Promise<{ ok: true; card: Card } | Fail> {
   const domain = normalizeDomain(input);
   if (!domain) return fail(400, "bad_domain", "Give a public domain name such as github.com (no IPs, ports or internal hosts).");
-  const p = await getProbe(env, domain, await ipKey(ip, env.TOKEN_SECRET), !!opts.fresh);
+  const p = await getProbe(env, domain, await ipKey(ip, env.TOKEN_SECRET), !!opts.fresh, !!opts.scout);
   if (!p.ok) return p;
   const t = now();
   const trail = computeTrail(await trailRows(env, domain), t);
@@ -94,7 +98,7 @@ export async function report(env: Env, body: any, ip: string, scout = false): Pr
   if (!scout && (await overLimit(env, `rep:${ih}`, REPORTS_PER_HOUR, HOUR))) return fail(429, "rate_limited", `Too many reports (${REPORTS_PER_HOUR}/hour).`);
 
   // Only real sites get trails: the domain must have been probed and reachable.
-  const p = await getProbe(env, domain, ih, false);
+  const p = await getProbe(env, domain, ih, false, scout);
   if (!p.ok) return p;
   if (!p.probe.reachable) return fail(422, "unknown_domain", `${domain} did not answer Scent's probe, so it cannot hold a trail.`);
 
@@ -132,7 +136,7 @@ export async function feed(env: Env, limit = 20) {
 export async function stats(env: Env) {
   const t = now();
   const [a, b, c] = await env.DB.batch([
-    env.DB.prepare("SELECT COUNT(*) AS domains FROM probes WHERE reachable = 1"),
+    env.DB.prepare("SELECT COUNT(DISTINCT domain) AS domains FROM reports"),
     env.DB.prepare("SELECT COUNT(*) AS reports, COUNT(DISTINCT reporter) AS reporters, MAX(created_at) AS last FROM reports"),
     env.DB.prepare("SELECT COUNT(*) AS n FROM reports WHERE created_at > ?1").bind(t - DAY),
   ]);
@@ -148,4 +152,19 @@ export async function prune(env: Env) {
     env.DB.prepare("DELETE FROM probes WHERE checked_at < ?1").bind(t - 14 * DAY),
     env.DB.prepare("DELETE FROM rate_limits WHERE reset_at < ?1").bind(t),
   ]);
+}
+
+/** Cron: re-probe the busiest trails whose cached probe is missing or stale, so visitors get an instant answer. (3 per run keeps us far inside the subrequest budget.) */
+export async function warm(env: Env, max = 3) {
+  const t = now();
+  const { results } = await env.DB.prepare(
+    `SELECT r.domain FROM reports r LEFT JOIN probes p ON p.domain = r.domain
+     WHERE r.created_at > ?1 AND (p.checked_at IS NULL OR p.checked_at < ?2)
+     GROUP BY r.domain ORDER BY MAX(r.created_at) DESC LIMIT ?3`,
+  ).bind(t - 14 * DAY, t - PROBE_TTL_MS, max).all<{ domain: string }>();
+  for (const { domain } of results) {
+    try {
+      await saveProbe(env, await probeDomain(domain, fetch, { findDocs: (d) => exaDocs(env, d) }));
+    } catch {}
+  }
 }
