@@ -1,7 +1,10 @@
+# required: any long random string, used to salt hashed client IPs
 TOKEN_SECRET=
+# optional: lets npm run scout file reports as scouts (weight 0.6, no per-IP caps)
 ADMIN_SECRET=
 # optional: finds a docs page for sites with no OpenAPI/llms.txt
 EXA_API_KEY=
 # optional: only for npm run brainbase
 BRAINBASE_API_KEY=
-# Local dev: PUBLIC_BASE_URL=http://localhost:8787
+# optional, local dev only: make discovery links point at the dev server
+# PUBLIC_BASE_URL=http://localhost:8787
