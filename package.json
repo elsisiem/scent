@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Pheromone trails for the agent web: which door into a site is open, and what other agents just found there.",
+  "description": "Pheromone trails for the agent web: which door into a site is open, and what other agents recently found there.",
   "scripts": {
     "dev": "wrangler dev",
     "deploy": "wrangler deploy",
